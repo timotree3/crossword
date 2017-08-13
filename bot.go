@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -14,17 +16,22 @@ import (
 
 var (
 	nyc *time.Location
+	chatChannels = []string{
+		"today",
+		"yesterday",
+	}
+	release_delay = time.Second * 30
 )
 
 const (
-	TODAY_TOPIC = `Discussion of today's (%s) crossword and sharing of times.`
-	YESTERDAY_TOPIC = `Discussion of yesterday's (%s) crossword and sharing of times.`
+	TOPIC = `Dicussion of the mini crossword from %s.`
+	WEEKDAY_HOUR = 12 + 10 // 10PM
+	WEEKEND_HOUR = 12 + 6 // 6PM
 )
-//weekendReleaseTime: 6:00 PM
-//weekdayReleaseTime: 10:00 PM
 
 func init() {
-  nyc, err := time.LoadLocation("America/New_York")
+	var err error
+  nyc, err = time.LoadLocation("America/New_York")
   if err != nil {
     log.Fatalln(err)
   }
@@ -75,18 +82,40 @@ func guildJoin(s *discordgo.Session, event *discordgo.GuildCreate) {
 	}
 
 	log.Printf("guild: %#v\n", event.Guild.Name)
-	// Does #today exist?
-	today, ok := findChannel(event.Guild, "today")
-	if !ok {
-		// Create #today
-		// today = newToday
-	}
+
 	now := time.Now().In(nyc)
-	// Is #today up to date?
-	if today.Topic == fmt.Sprintf(TODAY_TOPIC, now.Format("1/2/2006 (MST)")) {
 
+	// Update channels
+	update(s, event.Guild, lastRelease(now))
+}
+
+// Daily update that runs every time a new crossword is released OR on startup
+func update(s *discordgo.Session, guild *discordgo.Guild, now time.Time) error {
+	for i, channelName := range chatChannels {
+		channelID, ok := findChannel(guild, channelName)
+		channel, err := s.Channel(channelID)
+		// 	if the channel's date is...
+		//    ...today's, do nothing
+		// 		...yesterdays's, rename it to 'yesterday'
+		// 		otherwise, copy it to 'archive'
+		switch channel.Topic {
+		case makeTopic(now):
+			// if it was made today
+			// don't do anything (it can't be out of date)
+			continue
+		case makeTopic(releaseTime(now.Add(24 * -time.Hour))):
+			// if it was made yesterday
+			// rename it to "#yesterday"
+			s.ChannelEdit(channelID, "yesterday")
+			return nil
+		default:
+			// otherwise
+			archiveChannel(s, channelID)
+			// archive it
+		}
 	}
-
+	// if today is missing, create it
+	return nil
 }
 
 // This function will be called (due to AddHandler above) every time a new
@@ -108,28 +137,24 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
-	// If the message is "ping" reply with "Pong!"
-	if m.Content == "ping" {
-		send(s, m.ChannelID, "Pong!")
-	}
-
-	// If the message is "pong" reply with "Ping!"
-	if m.Content == "pong" {
-		send(s, m.ChannelID, "Ping!")
-	}
 }
 
 func send(s *discordgo.Session, channelID string, content string) (*discordgo.Message, error) {
 	return s.ChannelMessageSend(channelID, "\u200B"+content)
 }
 
-func findChannel(guild *discordgo.Guild, name string) (*discordgo.Channel, bool) {
-	for _, channel := range event.Guild.Channels {
+func findChannel(guild *discordgo.Guild, name string) (channelID string, ok bool) {
+	for _, channel := range guild.Channels {
 		if channel.Name == name {
-			return channel, true
+			channelID, ok = channel.ID, true
+			return
 		}
 	}
-	return nil, false
+	return
+}
+
+func makeTopic(t time.Time) string {
+	return fmt.Sprintf(TOPIC, t.Format("1/2/2006"))
 }
 
 //-------FUNCTIONS FOR RELEASE TIMES-------
@@ -179,3 +204,44 @@ When was the most recent crossword released:
 		crossword was released at releaseTime(yesterday)
 */
 //--------------
+
+func ChannelTopicEdit(s *discordgo.Session, channelID, topic string) (st *discordgo.Channel, err error) {
+
+	data := struct {
+		Topic string `json:"topic"`
+	}{topic}
+
+	body, err := s.RequestWithBucketID("PATCH", discordgo.EndpointChannel(channelID), data, discordgo.EndpointChannel(channelID))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(body, &st)
+	return
+}
+
+
+func archiveChannel(s *discordgo.Session, channelID string) {
+// 	archiveContent :=
+// 	s.ChannelMessageSend(archiveContent)
+ 	return
+}
+
+// Outputs a list of every message in the specified channel from newest to oldest
+func readChannel(s *discordgo.Session, channelID string) (l []*discordgo.Message, err error) {
+  const READ_LIMIT = 100
+  new, err := s.ChannelMessages(channelID, READ_LIMIT, "", "", "")
+  if err != nil {
+    return
+  }
+  l = append(l, new...)
+
+  for len(new) == READ_LIMIT {
+    new, err = s.ChannelMessages(channelID, READ_LIMIT, l[len(l) - 1].ID, "", "")
+    if err != nil {
+      return
+    }
+    l = append(l, new...)
+  }
+  return
+}
