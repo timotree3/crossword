@@ -4,9 +4,8 @@
 //! For more info, see the [FAQ].
 //! [FAQ]: https://www.nytimes.com/content/help/games/crosswords/crosswords.html#available
 
-
 use std;
-use chrono::{DateTime, Datelike, Date, TimeZone, Utc};
+use chrono::{Date, DateTime, Datelike, TimeZone, Utc};
 use chrono_tz::America::New_York;
 use chrono_tz::Tz;
 
@@ -61,7 +60,7 @@ impl Puzzle {
         use chrono::Weekday;
         let hour = match self.date.weekday() {
             Weekday::Sat | Weekday::Sun => 18, // 6PM
-            _ => 22, // 10PM
+            _ => 22,                           // 10PM
         };
         self.date.and_hms(hour, 0, 0)
     }
@@ -69,6 +68,7 @@ impl Puzzle {
     /// Blocks until this puzzle's replacement has been released.
     pub fn wait_until_replaced(self) {
         wait_until(self.replacement_time().with_timezone(&Utc))
+        // wait_until(Utc::now()+::chrono::Duration::seconds(10));
     }
 
     /// Returns the year, month, and day.
