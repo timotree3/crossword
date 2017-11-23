@@ -7,8 +7,6 @@ authors = ["timotree3 <timorcb@gmail.com>"]
 serenity = "0.4.1"
 chrono = "0.4.0"
 chrono-tz = "0.4.0"
-# ny-crossword-times = { path = "ny-crossword-times" }
 error-chain = "0.11.0"
 log = "0.3.8"
 env_logger = "0.4.3"
-ctrlc = "3.0.3"

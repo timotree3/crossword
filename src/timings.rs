@@ -70,6 +70,11 @@ impl Puzzle {
     pub fn wait_until_replaced(self) {
         wait_until(self.replacement_time().with_timezone(&Utc))
     }
+
+    /// Returns the year, month, and day.
+    pub fn ymd(self) -> (i32, u32, u32) {
+        (self.date.year(), self.date.month(), self.date.day())
+    }
 }
 
 use std::fmt;
@@ -85,6 +90,7 @@ pub fn wait_until(stop: DateTime<Utc>) {
     let mut delay = stop.signed_duration_since(Utc::now());
     // delay.to_std() fails if delay is negative
     while let Ok(d) = delay.to_std() {
+        info!("sleeping for ~{} seconds", d.as_secs());
         std::thread::sleep(d);
         delay = stop.signed_duration_since(Utc::now());
     }

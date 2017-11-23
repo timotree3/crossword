@@ -6,7 +6,6 @@ extern crate error_chain;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
-extern crate ctrlc;
 
 mod timings;
 
@@ -79,12 +78,6 @@ fn run() -> Result<()> {
 
     info!("starting!");
 
-    // TODO: broken until CloseHandle is fixed.
-    // let closer = client.close_handle();
-    // ctrlc::set_handler(move || {
-    //     closer.close();
-    // }).chain_err(|| "failed to start ctrlc thread")?;
-
     std::thread::spawn(move || broadcast_loop());
 
     client.start().chain_err(|| "failed to start client")?;
@@ -110,14 +103,12 @@ fn broadcast_loop() {
 
 fn broadcast(new: Puzzle) -> Result<()> {
     info!("broadcasting for puzzle: {}", new);
-    let guilds = serenity::CACHE.read().unwrap().user.guilds().chain_err(
-        || "failed to query user guilds",
-    )?;
-    for g in guilds {
-        if let Err(e) = broadcast_guild(new, g.id) {
+    let guilds = &serenity::CACHE.read().unwrap().guilds;
+    for id in guilds.keys() {
+        if let Err(e) = broadcast_guild(new, *id) {
             warn!(
                 "failed to broadcast for guild (id={}): {}",
-                g.id,
+                id,
                 e.display_chain()
             )
         }
@@ -125,21 +116,52 @@ fn broadcast(new: Puzzle) -> Result<()> {
     Ok(())
 }
 
-fn broadcast_guild(puzzle: Puzzle, guild: GuildId) -> Result<()> {
-    let channels = guild.channels().chain_err(|| "failed to retrieve channels")?;
-    for channel in channels.values() {
-        if channel.name == "crosswords" {
-            channel
-                .say(&format!(
-                    "\u{200B}\
-                The mini of {} just came out! \
-                Play it online at https://nytimes.com/crosswords/game/mini or in the app.\n\
-                Once you're done, click the :white_check_mark: below \
-                so you can share your thoughts.",
-                    puzzle
-                ))
-                .chain_err(|| "failed to send update message")?;
-        }
-    }
+fn broadcast_guild(puzzle: Puzzle, id: GuildId) -> Result<()> {
+    let channels = id.channels().chain_err(|| "failed to retrieve channels")?;
+
+    // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
+    let crosswords = channels
+        .values()
+        .filter(|c| c.name == "crosswords")
+        .next()
+        .chain_err(|| "failed to find crosswords channel")?;
+
+    let todays = id.create_channel(
+        {
+            let (year, month, day) = puzzle.ymd();
+            &format!("{}-{}-{}", year, month, day)
+        },
+        ChannelType::Text,
+    ).chain_err(|| "failed to create today's channel")?;
+
+    // block the channel for everyone who hasn't clicked the checkmark. see process_checkmark().
+    todays
+        .create_permission(&PermissionOverwrite {
+            allow: Permissions::empty(),
+            deny: Permissions::READ_MESSAGES,
+            kind: PermissionOverwriteType::Role({
+                let guild = id.find().chain_err(|| "failed to find cached guild")?;
+                let guild = guild.read().unwrap();
+                let everyone = guild
+                    .roles
+                    .iter()
+                    .filter(|&(_, role)| role.position <= 0 && role.name == "@everyone")
+                    .next()
+                    .chain_err(|| "failed to find `@everyone` role")?;
+                *everyone.0
+            }),
+        })
+        .chain_err(|| "failed to configure today's channel")?;
+
+    crosswords
+        .say(&format!(
+            "\u{200B}\
+        The mini of {} just came out! \
+        Play it online at https://nytimes.com/crosswords/game/mini or in the app.\n\
+        Once you're done, click the :white_check_mark: below \
+        so you can share your thoughts.",
+            puzzle
+        ))
+        .chain_err(|| "failed to send update message")?;
     Ok(())
 }

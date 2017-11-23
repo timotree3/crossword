@@ -7,9 +7,7 @@ Discord bot which runs my crossword server
 - [Channels](#channels)
 	- [`#crosswords`](#crosswords)
 	- [`#feedback`](#feedback)
-	- [`#today`](#today)
-	- [`#yesterday`](#yesterday)
-	- [`#archive`](#archive)
+	- [`#{year}-{month}-{day}`](#year-month-day)
 
 <!-- /TOC -->
 
@@ -21,11 +19,5 @@ A channel where only the bot can speak. Posts are made daily for each mini cross
 ### `#feedback`
 Open channel for users to give feedback or make requests.
 
-### `#today`
-Discussion of today's ([date]) crossword and sharing of times.
-
-### `#yesterday`
-Discussion of yesterday's ([date]) crossword and sharing of times.
-
-### `#archive`
-An archive of the discussions of previous crosswords.
+### `#{year}-{month}-{day}`
+Discussion of date's crossword and sharing of times.
