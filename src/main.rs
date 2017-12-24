@@ -47,17 +47,22 @@ impl EventHandler for Handler {
             }
 
             let guild_id = {
-                let channel = react
-                    .channel_id
-                    .get()
-                    .chain_err(|| "failed to get channel")?;
-                if channel.name != "crosswords" {
+                let guild_channel_lock = {
+                    let channel = react
+                        .channel_id
+                        .get()
+                        .chain_err(|| "failed to get channel")?;
+                    if let Some(c) = guild_channel(channel) {
+                        c
+                    } else {
+                        return Ok(());
+                    }
+                };
+                let guild_channel = guild_channel_lock.read().unwrap();
+                if guild_channel.name != "crosswords" {
                     return Ok(());
                 }
-                match channel_guild_id(channel) {
-                    Some(guild_id) => guild_id,
-                    None => return Ok(()),
-                }
+                guild_channel.guild_id
             };
 
             let puzzle = Puzzle::current_as_of(
@@ -72,10 +77,10 @@ impl EventHandler for Handler {
         }
     }
 
-    fn on_reaction_remove(&self, _: Context, react: Reaction) {}
+    // fn on_reaction_remove(&self, _: Context, react: Reaction) {}
 }
 
-fn channel_guild_id(c: Channel) -> Option<Arc<RwLock<GuildChannel>>> {
+fn guild_channel(c: Channel) -> Option<::std::sync::Arc<::std::sync::RwLock<GuildChannel>>> {
     match c {
         Channel::Guild(channel_lock) => Some(channel_lock),
         _ => None,
@@ -87,15 +92,14 @@ fn mark_finished(guild_id: GuildId, puzzle: Puzzle, user_id: UserId) -> Result<(
     let channels = guild_id
         .channels()
         .chain_err(|| "failed to retrieve channels")?;
-    for (channel_id, _) in channels
-        .iter()
-        .filter(|&(_, c)| c.name == name)
-    {
-        channel_id.create_permission(&PermissionOverwrite {
-            allow: Permissions::READ_MESSAGES,
-            deny: Permissions::empty(),
-            kind: PermissionOverwriteType::Member(user_id),
-        }).chain_err(|| "failed to change user permissions")?;
+    for (channel_id, _) in channels.iter().filter(|&(_, c)| c.name == name) {
+        channel_id
+            .create_permission(&PermissionOverwrite {
+                allow: Permissions::READ_MESSAGES,
+                deny: Permissions::empty(),
+                kind: PermissionOverwriteType::Member(user_id),
+            })
+            .chain_err(|| "failed to change user permissions")?;
     }
     Ok(())
 }
@@ -151,17 +155,21 @@ fn broadcast(new: Puzzle) -> Result<()> {
     Ok(())
 }
 
-fn broadcast_guild(puzzle: Puzzle, id: GuildId) -> Result<()> {
-    let channels = id.channels().chain_err(|| "failed to retrieve channels")?;
+fn broadcast_guild(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
+    let channels = guild_id
+        .channels()
+        .chain_err(|| "failed to retrieve channels")?;
 
     // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
     let crosswords = channels
-        .values()
-        .filter(|c| c.name == "crosswords")
+        .iter()
+        .filter(|&(_channel_id, channel)| channel.name == "crosswords")
+        .map(|(_channel_id, channel)| channel)
         .next()
         .chain_err(|| "failed to find crosswords channel")?;
 
-    let todays = id.create_channel(&channel_name(puzzle), ChannelType::Text)
+    let todays = guild_id
+        .create_channel(&channel_name(puzzle), ChannelType::Text)
         .chain_err(|| "failed to create today's channel")?;
 
     // block the channel for everyone who hasn't clicked the checkmark. see process_checkmark().
@@ -170,15 +178,17 @@ fn broadcast_guild(puzzle: Puzzle, id: GuildId) -> Result<()> {
             allow: Permissions::empty(),
             deny: Permissions::READ_MESSAGES,
             kind: PermissionOverwriteType::Role({
-                let guild = id.find().chain_err(|| "failed to find cached guild")?;
-                let guild = guild.read().unwrap();
-                let everyone = guild
+                let guild_lock = guild_id.find().chain_err(|| "failed to find cached guild")?;
+                let guild = guild_lock.read().unwrap();
+                let everyone_id = guild
                     .roles
                     .iter()
-                    .filter(|&(_, role)| role.position <= 0 && role.name == "@everyone")
+                    .filter(|&(_role_id, role)| role.position <= 0 && role.name == "@everyone")
+                    .map(|(role_id, _role)| role_id)
                     .next()
                     .chain_err(|| "failed to find `@everyone` role")?;
-                *everyone.0
+
+                *everyone_id
             }),
         })
         .chain_err(|| "failed to configure today's channel")?;
