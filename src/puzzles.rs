@@ -91,6 +91,18 @@ impl Puzzle {
         let (year, month, day) = self.ymd();
         format!("{}-{}-{}", year, month, day)
     }
+
+    /// Blocks forever while calling `callback` every time a new puzzle is released.
+    pub fn every<F>(mut callback: F)
+    where
+        F: FnMut(Puzzle),
+    {
+        loop {
+            let current = Puzzle::current_as_of(Utc::now());
+            current.wait_until_replaced();
+            callback(current.succ())
+        }
+    }
 }
 
 impl ::std::fmt::Display for Puzzle {

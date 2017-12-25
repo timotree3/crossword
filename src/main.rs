@@ -13,7 +13,6 @@ mod discord;
 
 use puzzles::Puzzle;
 
-use chrono::offset::Utc;
 use serenity::model::*;
 use serenity::prelude::*;
 
@@ -33,7 +32,7 @@ impl EventHandler for Handler {
     fn on_ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        std::thread::spawn(move || periodically_announce());
+        std::thread::spawn(move || Puzzle::every(|new| announce_in_all(new)));
     }
     fn on_reaction_add(&self, _: Context, reaction: Reaction) {
         debug!("new reaction: {:?}", reaction.emoji);
@@ -137,35 +136,18 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn periodically_announce() {
-    loop {
-        let current = Puzzle::current_as_of(Utc::now());
-        current.wait_until_replaced();
-        let new = current.succ();
-
-        announce_in_all(new).unwrap_or_else(|e| {
-            warn!(
-                "error broadcasting puzzle ({:?}): {}",
-                new,
-                e.display_chain()
-            )
-        });
-    }
-}
-
-fn announce_in_all(new: Puzzle) -> Result<()> {
+fn announce_in_all(new: Puzzle) {
     info!("broadcasting for puzzle: {}", new);
     let guilds = &serenity::CACHE.read().unwrap().guilds;
-    for guild_id in guilds.keys() {
+    guilds.iter().for_each(|(guild_id, _guild)| {
         announce_in(new, *guild_id).unwrap_or_else(|e| {
             warn!(
                 "failed to broadcast for guild (guild_id={}): {}",
                 guild_id,
                 e.display_chain()
             )
-        });
-    }
-    Ok(())
+        })
+    });
 }
 
 fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
