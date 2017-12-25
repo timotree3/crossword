@@ -32,6 +32,10 @@ pub fn from_role_id(role_id: RoleId) -> PermissionOverwriteType {
     PermissionOverwriteType::Role(role_id)
 }
 
+pub fn from_user_id(user_id: UserId) -> PermissionOverwriteType {
+    PermissionOverwriteType::Member(user_id)
+}
+
 pub fn find_channel(name: &str, guild_id: GuildId) -> Result<(ChannelId, GuildChannel)> {
     let channels = guild_id
         .channels()
@@ -77,4 +81,18 @@ pub fn unhide_channel(
         })
         .chain_err(|| "failed to change channel permissions")?;
     Ok(())
+}
+
+pub fn reaction_message(reaction: &Reaction) -> Result<Message> {
+    Ok(reaction
+        .channel_id
+        .message(reaction.message_id)
+        .chain_err(|| "failed to get message")?)
+}
+
+pub fn reaction_channel(reaction: &Reaction) -> Result<Channel> {
+    Ok(reaction
+        .channel_id
+        .get()
+        .chain_err(|| "failed to get channel")?)
 }

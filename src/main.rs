@@ -50,40 +50,30 @@ impl EventHandler for Handler {
                 return Ok(());
             }
 
-            let guild_id = {
-                let guild_channel_lock = {
-                    let channel = react
-                        .channel_id
-                        .get()
-                        .chain_err(|| "failed to get channel")?;
-                    if let Some(c) = discord::guild_channel(channel) {
-                        c
-                    } else {
-                        return Ok(());
-                    }
-                };
-                let guild_channel = guild_channel_lock.read().unwrap();
-                if guild_channel.name != "crosswords" {
-                    debug!("skipping reaction because it isn't in #crosswords");
-                    return Ok(());
-                }
-                guild_channel.guild_id
+            let channel_lock = match discord::guild_channel(discord::reaction_channel(&react)
+                .chain_err(|| "failed to get reaction channel")?)
+            {
+                Some(channel) => channel,
+                None => return Ok(()),
             };
 
-            let puzzle = {
-                let announcement = react
-                    .channel_id
-                    .message(react.message_id)
-                    .chain_err(|| "failed to find message")?;
+            let channel = channel_lock.read().unwrap();
+            if channel.name != "crosswords" {
+                debug!("skipping reaction because it isn't in #crosswords");
+                return Ok(());
+            }
 
-                Puzzle::from_announcement(announcement)
-            };
+            let guild_id = channel.guild_id;
 
-            let name = puzzle.to_channel_name();
-            let (_channel_id, channel) =
-                discord::find_channel(&name, guild_id).chain_err(|| "failed to find channel")?;
+            let (_puzzle_channel_id, puzzle_channel) =
+                discord::find_channel(
+                    &Puzzle::from_announcement(discord::reaction_message(&react)
+                        .chain_err(|| "failed to get reaction message")?)
+                        .to_channel_name(),
+                    guild_id,
+                ).chain_err(|| "failed to find puzzle channel")?;
 
-            discord::unhide_channel(&channel, PermissionOverwriteType::Member(react.user_id))
+            discord::unhide_channel(&puzzle_channel, discord::from_user_id(react.user_id))
                 .chain_err(|| "failed to hide channel")?;
             Ok(())
         }
