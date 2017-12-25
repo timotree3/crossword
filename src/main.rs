@@ -35,22 +35,22 @@ impl EventHandler for Handler {
 
         std::thread::spawn(move || periodically_announce());
     }
-    fn on_reaction_add(&self, _: Context, react: Reaction) {
-        debug!("new reaction: {:?}", react.emoji);
-        process_reaction(&react).unwrap_or_else(|e| {
+    fn on_reaction_add(&self, _: Context, reaction: Reaction) {
+        debug!("new reaction: {:?}", reaction.emoji);
+        process_reaction(&reaction).unwrap_or_else(|e| {
             warn!(
                 "failed to process reaction ({:?}): {}",
-                react,
+                reaction,
                 e.display_chain()
             )
         });
-        fn process_reaction(react: &Reaction) -> Result<()> {
-            if react.emoji != CHECKMARK.into() {
+        fn process_reaction(reaction: &Reaction) -> Result<()> {
+            if reaction.emoji != CHECKMARK.into() {
                 debug!("skipping reaction because it isn't a checkmark");
                 return Ok(());
             }
 
-            let channel_lock = match discord::guild_channel(discord::reaction_channel(&react)
+            let channel_lock = match discord::guild_channel(discord::reaction_channel(&reaction)
                 .chain_err(|| "failed to get reaction channel")?)
             {
                 Some(channel) => channel,
@@ -67,20 +67,20 @@ impl EventHandler for Handler {
 
             let (_puzzle_channel_id, puzzle_channel) =
                 discord::find_channel(
-                    &Puzzle::from_announcement(discord::reaction_message(&react)
+                    &Puzzle::from_announcement(discord::reaction_message(&reaction)
                         .chain_err(|| "failed to get reaction message")?)
                         .to_channel_name(),
                     guild_id,
                 ).chain_err(|| "failed to find puzzle channel")?;
 
-            discord::unhide_channel(&puzzle_channel, discord::from_user_id(react.user_id))
+            discord::unhide_channel(&puzzle_channel, discord::from_user_id(reaction.user_id))
                 .chain_err(|| "failed to hide channel")?;
             Ok(())
         }
     }
 
-    fn on_reaction_remove(&self, _: Context, react: Reaction) {
-        debug!("reaction removed: {:?}", react.emoji);
+    fn on_reaction_remove(&self, _: Context, reaction: Reaction) {
+        debug!("reaction removed: {:?}", reaction.emoji);
     }
 }
 
