@@ -32,16 +32,16 @@ pub fn from_role_id(role_id: RoleId) -> PermissionOverwriteType {
     PermissionOverwriteType::Role(role_id)
 }
 
-pub fn find_channel(name: &str, guild_id: GuildId) -> Result<ChannelId> {
+pub fn find_channel(name: &str, guild_id: GuildId) -> Result<(ChannelId, GuildChannel)> {
     let channels = guild_id
         .channels()
         .chain_err(|| "failed to retrieve channels")?;
-    let (channel_id, _channel) = channels
-        .iter()
-        .filter(|&(_channel_id, channel)| channel.name == name)
+    let (channel_id, channel_lock) = channels
+        .into_iter()
+        .filter(|&(_channel_id, ref channel)| channel.name == name)
         .next()
         .chain_err(|| "failed to find channel")?;
-    Ok(*channel_id)
+    Ok((channel_id, channel_lock))
 }
 
 pub fn create_secret_channel(name: &str, guild_id: GuildId) -> Result<GuildChannel> {
@@ -63,4 +63,18 @@ pub fn guild_channel(c: Channel) -> Option<::std::sync::Arc<::std::sync::RwLock<
         Channel::Guild(channel_lock) => Some(channel_lock),
         _ => None,
     }
+}
+
+pub fn unhide_channel(
+    channel: &GuildChannel,
+    to_unhide_from: PermissionOverwriteType,
+) -> Result<()> {
+    channel
+        .create_permission(&PermissionOverwrite {
+            allow: Permissions::READ_MESSAGES,
+            deny: Permissions::empty(),
+            kind: to_unhide_from,
+        })
+        .chain_err(|| "failed to change channel permissions")?;
+    Ok(())
 }

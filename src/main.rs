@@ -5,6 +5,7 @@ extern crate env_logger;
 extern crate error_chain;
 #[macro_use]
 extern crate log;
+#[macro_use]
 extern crate serenity;
 
 mod puzzles;
@@ -32,17 +33,17 @@ impl EventHandler for Handler {
     fn on_ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        std::thread::spawn(move || broadcast_loop());
+        std::thread::spawn(move || periodically_announce());
     }
     fn on_reaction_add(&self, _: Context, react: Reaction) {
         debug!("new reaction: {:?}", react.emoji);
-        if let Err(e) = process_reaction(&react) {
+        process_reaction(&react).unwrap_or_else(|e| {
             warn!(
                 "failed to process reaction ({:?}): {}",
                 react,
                 e.display_chain()
-            );
-        }
+            )
+        });
         fn process_reaction(react: &Reaction) -> Result<()> {
             if react.emoji != CHECKMARK.into() {
                 debug!("skipping reaction because it isn't a checkmark");
@@ -78,7 +79,13 @@ impl EventHandler for Handler {
                 Puzzle::from_announcement(announcement)
             };
 
-            mark_finished(guild_id, puzzle, react.user_id)
+            let name = puzzle.to_channel_name();
+            let (_channel_id, channel) =
+                discord::find_channel(&name, guild_id).chain_err(|| "failed to find channel")?;
+
+            discord::unhide_channel(&channel, PermissionOverwriteType::Member(react.user_id))
+                .chain_err(|| "failed to hide channel")?;
+            Ok(())
         }
     }
 
@@ -87,22 +94,35 @@ impl EventHandler for Handler {
     }
 }
 
-fn mark_finished(guild_id: GuildId, puzzle: Puzzle, user_id: UserId) -> Result<()> {
-    let name = puzzle.to_channel_name();
-    let channels = guild_id
-        .channels()
-        .chain_err(|| "failed to retrieve channels")?;
-    for (channel_id, _) in channels.iter().filter(|&(_, c)| c.name == name) {
-        channel_id
-            .create_permission(&PermissionOverwrite {
-                allow: Permissions::READ_MESSAGES,
-                deny: Permissions::empty(),
-                kind: PermissionOverwriteType::Member(user_id),
-            })
-            .chain_err(|| "failed to change user permissions")?;
+command!(announce_fake(_context, message) {
+    process_message(&message).unwrap_or_else(|e| {
+        warn!(
+            "failed to process message ({:?}): {}",
+            message,
+            e.display_chain()
+        )
+    });
+
+    fn process_message(message: &Message) -> Result<()> {
+        if message.is_own() {
+            return Ok(());
+        }
+        let guild_channel_lock = match discord::guild_channel(message.channel_id.get().chain_err(|| "failed to get channel")?) {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let guild_channel = guild_channel_lock.read().unwrap();
+
+        if guild_channel.name != "commands" {
+            return Ok(());
+        }
+
+        message.reply("Announcing...").chain_err(|| "failed to send reply message")?;
+
+        Ok(())
     }
-    Ok(())
-}
+});
 
 quick_main!(run);
 
@@ -114,6 +134,12 @@ fn run() -> Result<()> {
         Client::new(&token, Handler)
     };
 
+    client.with_framework(
+        serenity::framework::standard::StandardFramework::new()
+            .configure(|c| c.on_mention(true))
+            .on("announce", announce_fake),
+    );
+
     info!("starting!");
 
     client.start().chain_err(|| "failed to start client")?;
@@ -121,49 +147,46 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn broadcast_loop() {
+fn periodically_announce() {
     loop {
-        // let current = Puzzle::current_as_of(Utc::now());
-        // current.wait_until_replaced();
-        // let new = current.succ();
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        let new = Puzzle::current_as_of(Utc::now());
+        let current = Puzzle::current_as_of(Utc::now());
+        current.wait_until_replaced();
+        let new = current.succ();
 
-        if let Err(e) = broadcast(new) {
+        announce_in_all(new).unwrap_or_else(|e| {
             warn!(
                 "error broadcasting puzzle ({:?}): {}",
                 new,
                 e.display_chain()
-            );
-        }
-        break;
+            )
+        });
     }
 }
 
-fn broadcast(new: Puzzle) -> Result<()> {
+fn announce_in_all(new: Puzzle) -> Result<()> {
     info!("broadcasting for puzzle: {}", new);
     let guilds = &serenity::CACHE.read().unwrap().guilds;
-    for id in guilds.keys() {
-        if let Err(e) = broadcast_guild(new, *id) {
+    for guild_id in guilds.keys() {
+        announce_in(new, *guild_id).unwrap_or_else(|e| {
             warn!(
-                "failed to broadcast for guild (id={}): {}",
-                id,
+                "failed to broadcast for guild (guild_id={}): {}",
+                guild_id,
                 e.display_chain()
             )
-        }
+        });
     }
     Ok(())
 }
 
-fn broadcast_guild(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
+fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
     // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
-    let crosswords =
+    let (crosswords_id, _crosswords_lock) =
         discord::find_channel("crosswords", guild_id).chain_err(|| "failed to find #crosswords")?;
 
     let _todays_channel = discord::create_secret_channel(&puzzle.to_channel_name(), guild_id)
         .chain_err(|| "failed to create todays secret channel")?;
 
-    crosswords
+    crosswords_id
         .send_message(|m| {
             m.content(&puzzle.to_announcement())
                 .reactions(Some(CHECKMARK))
