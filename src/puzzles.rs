@@ -21,14 +21,8 @@ mod tests {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Puzzle {
-    // date: MaybeTest<Date<Tz>, NanoSeconds>,
     date: Date<Tz>,
 }
-
-// enum MaybeTest<T, C> {
-//     Real(T),
-//     Test(C),
-// }
 
 impl Puzzle {
     /// Returns the puzzle associated with `day`. TimeZone must be New_York.
@@ -82,7 +76,7 @@ impl Puzzle {
         (self.date.year(), self.date.month(), self.date.day())
     }
 
-    pub fn announcement(self) -> String {
+    pub fn to_announcement(self) -> String {
         format!(
             "\u{200B}\
              TEST The mini of {} just came out! \
@@ -92,13 +86,20 @@ impl Puzzle {
             self
         )
     }
+
+    pub fn from_announcement(announcement: ::serenity::model::Message) -> Puzzle {
+        Puzzle::current_as_of(announcement.timestamp)
+    }
+
+    pub fn to_channel_name(self) -> String {
+        let (year, month, day) = self.ymd();
+        format!("{}-{}-{}", year, month, day)
+    }
 }
 
-use std::fmt;
-
-impl fmt::Display for Puzzle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.date.format("%A, %B %e %Y").fmt(f)
+impl ::std::fmt::Display for Puzzle {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+        ::std::fmt::Display::fmt(&self.date.format("%A, %B %e %Y"), f)
     }
 }
 

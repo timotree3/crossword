@@ -55,7 +55,7 @@ impl EventHandler for Handler {
                         .channel_id
                         .get()
                         .chain_err(|| "failed to get channel")?;
-                    if let Some(c) = guild_channel(channel) {
+                    if let Some(c) = discord::guild_channel(channel) {
                         c
                     } else {
                         debug!("skipping reaction because it isn't in #crosswords");
@@ -69,13 +69,14 @@ impl EventHandler for Handler {
                 guild_channel.guild_id
             };
 
-            let puzzle = Puzzle::current_as_of(
-                react
+            let puzzle = {
+                let announcement = react
                     .channel_id
                     .message(react.message_id)
-                    .chain_err(|| "failed to find message")?
-                    .timestamp,
-            );
+                    .chain_err(|| "failed to find message")?;
+
+                Puzzle::from_announcement(announcement)
+            };
 
             mark_finished(guild_id, puzzle, react.user_id)
         }
@@ -86,15 +87,8 @@ impl EventHandler for Handler {
     }
 }
 
-fn guild_channel(c: Channel) -> Option<::std::sync::Arc<::std::sync::RwLock<GuildChannel>>> {
-    match c {
-        Channel::Guild(channel_lock) => Some(channel_lock),
-        _ => None,
-    }
-}
-
 fn mark_finished(guild_id: GuildId, puzzle: Puzzle, user_id: UserId) -> Result<()> {
-    let name = channel_name(puzzle);
+    let name = puzzle.to_channel_name();
     let channels = guild_id
         .channels()
         .chain_err(|| "failed to retrieve channels")?;
@@ -162,51 +156,19 @@ fn broadcast(new: Puzzle) -> Result<()> {
 }
 
 fn broadcast_guild(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
-    let channels = guild_id
-        .channels()
-        .chain_err(|| "failed to retrieve channels")?;
-
     // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
-    let crosswords = channels
-        .iter()
-        .filter(|&(_channel_id, channel)| channel.name == "crosswords")
-        .map(|(_channel_id, channel)| channel)
-        .next()
-        .chain_err(|| "failed to find crosswords channel")?;
+    let crosswords =
+        discord::find_channel("crosswords", guild_id).chain_err(|| "failed to find #crosswords")?;
 
-    let todays = guild_id
-        .create_channel(&channel_name(puzzle), ChannelType::Text)
-        .chain_err(|| "failed to create today's channel")?;
-
-    // block the channel for everyone who hasn't clicked the checkmark. see process_checkmark().
-    todays
-        .create_permission(&PermissionOverwrite {
-            allow: Permissions::empty(),
-            deny: Permissions::READ_MESSAGES,
-            kind: PermissionOverwriteType::Role({
-                let guild_lock = guild_id.find().chain_err(|| "failed to find cached guild")?;
-                let guild = guild_lock.read().unwrap();
-                let everyone_id = guild
-                    .roles
-                    .iter()
-                    .filter(|&(_role_id, role)| role.position <= 0 && role.name == "@everyone")
-                    .map(|(role_id, _role)| role_id)
-                    .next()
-                    .chain_err(|| "failed to find `@everyone` role")?;
-
-                *everyone_id
-            }),
-        })
-        .chain_err(|| "failed to configure today's channel")?;
+    let _todays_channel = discord::create_secret_channel(&puzzle.to_channel_name(), guild_id)
+        .chain_err(|| "failed to create todays secret channel")?;
 
     crosswords
-        .send_message(|m| m.content(&puzzle.announcement()).reactions(Some(CHECKMARK)))
-        .chain_err(|| "failed to send update message")?;
+        .send_message(|m| {
+            m.content(&puzzle.to_announcement())
+                .reactions(Some(CHECKMARK))
+        })
+        .chain_err(|| "failed to send announcement message")?;
 
     Ok(())
-}
-
-fn channel_name(puzzle: Puzzle) -> String {
-    let (year, month, day) = puzzle.ymd();
-    format!("{}-{}-{}", year, month, day)
 }
