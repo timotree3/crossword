@@ -70,7 +70,8 @@ impl EventHandler for Handler {
                         .chain_err(|| "failed to get reaction message")?)
                         .to_channel_name(),
                     guild_id,
-                ).chain_err(|| "failed to find puzzle channel")?;
+                ).chain_err(|| "failed to find puzzle channel")?
+                    .chain_err(|| "failed to find puzzle channel")?;
 
             discord::unhide_channel(&puzzle_channel, discord::from_user_id(reaction.user_id))
                 .chain_err(|| "failed to hide channel")?;
@@ -152,11 +153,13 @@ fn announce_in_all(new: Puzzle) {
 
 fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
     // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
-    let (crosswords_id, _crosswords_lock) =
-        discord::find_channel("crosswords", guild_id).chain_err(|| "failed to find #crosswords")?;
+    let (crosswords_id, _crosswords_lock) = discord::find_channel("crosswords", guild_id)
+        .chain_err(|| "failed to find #crosswords")?
+        .chain_err(|| "failed to find #crosswords")?;
 
-    let _todays_channel = discord::create_hidden_channel(&puzzle.to_channel_name(), guild_id)
-        .chain_err(|| "failed to create todays hidden channel")?;
+    let _todays_channel =
+        discord::create_unique_hidden_channel(&puzzle.to_channel_name(), guild_id)
+            .chain_err(|| "failed to create todays hidden channel")?;
 
     crosswords_id
         .send_message(|m| {

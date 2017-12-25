@@ -36,16 +36,24 @@ pub fn from_user_id(user_id: UserId) -> PermissionOverwriteType {
     PermissionOverwriteType::Member(user_id)
 }
 
-pub fn find_channel(name: &str, guild_id: GuildId) -> Result<(ChannelId, GuildChannel)> {
+pub fn find_channel(name: &str, guild_id: GuildId) -> Result<Option<(ChannelId, GuildChannel)>> {
     let channels = guild_id
         .channels()
         .chain_err(|| "failed to retrieve channels")?;
-    let (channel_id, channel_lock) = channels
+    Ok(channels
         .into_iter()
         .filter(|&(_channel_id, ref channel)| channel.name == name)
-        .next()
-        .chain_err(|| "failed to find channel")?;
-    Ok((channel_id, channel_lock))
+        .next())
+}
+
+pub fn create_unique_hidden_channel(name: &str, guild_id: GuildId) -> Result<GuildChannel> {
+    ensure!(
+        find_channel(name, guild_id)
+            .chain_err(|| "failed to get channels")?
+            .is_none(),
+        "channel with same name already exists"
+    );
+    create_hidden_channel(name, guild_id)
 }
 
 pub fn create_hidden_channel(name: &str, guild_id: GuildId) -> Result<GuildChannel> {
