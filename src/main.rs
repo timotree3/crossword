@@ -59,12 +59,12 @@ impl EventHandler for Handler {
                     if let Some(c) = discord::guild_channel(channel) {
                         c
                     } else {
-                        debug!("skipping reaction because it isn't in #crosswords");
                         return Ok(());
                     }
                 };
                 let guild_channel = guild_channel_lock.read().unwrap();
                 if guild_channel.name != "crosswords" {
+                    debug!("skipping reaction because it isn't in #crosswords");
                     return Ok(());
                 }
                 guild_channel.guild_id
