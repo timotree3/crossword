@@ -48,7 +48,7 @@ pub fn find_channel(name: &str, guild_id: GuildId) -> Result<(ChannelId, GuildCh
     Ok((channel_id, channel_lock))
 }
 
-pub fn create_secret_channel(name: &str, guild_id: GuildId) -> Result<GuildChannel> {
+pub fn create_hidden_channel(name: &str, guild_id: GuildId) -> Result<GuildChannel> {
     let new_channel = guild_id
         .create_channel(name, ChannelType::Text)
         .chain_err(|| "failed to create new channel")?;

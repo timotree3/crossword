@@ -14,7 +14,7 @@ mod discord;
 use puzzles::Puzzle;
 
 use serenity::model::*;
-use serenity::prelude::*;
+use serenity::prelude::{Client, Context, EventHandler};
 
 use error_chain::ChainedError;
 
@@ -155,8 +155,8 @@ fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
     let (crosswords_id, _crosswords_lock) =
         discord::find_channel("crosswords", guild_id).chain_err(|| "failed to find #crosswords")?;
 
-    let _todays_channel = discord::create_secret_channel(&puzzle.to_channel_name(), guild_id)
-        .chain_err(|| "failed to create todays secret channel")?;
+    let _todays_channel = discord::create_hidden_channel(&puzzle.to_channel_name(), guild_id)
+        .chain_err(|| "failed to create todays hidden channel")?;
 
     crosswords_id
         .send_message(|m| {
