@@ -21,8 +21,14 @@ mod tests {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Puzzle {
+    // date: MaybeTest<Date<Tz>, NanoSeconds>,
     date: Date<Tz>,
 }
+
+// enum MaybeTest<T, C> {
+//     Real(T),
+//     Test(C),
+// }
 
 impl Puzzle {
     /// Returns the puzzle associated with `day`. TimeZone must be New_York.
@@ -75,6 +81,17 @@ impl Puzzle {
     pub fn ymd(self) -> (i32, u32, u32) {
         (self.date.year(), self.date.month(), self.date.day())
     }
+
+    pub fn announcement(self) -> String {
+        format!(
+            "\u{200B}\
+             TEST The mini of {} just came out! \
+             Play it online at https://nytimes.com/crosswords/game/mini or in the app.\n\
+             Once you're done, click the :white_check_mark: below \
+             so you can share your thoughts.",
+            self
+        )
+    }
 }
 
 use std::fmt;
@@ -90,7 +107,7 @@ pub fn wait_until(stop: DateTime<Utc>) {
     let mut delay = stop.signed_duration_since(Utc::now());
     // delay.to_std() fails if delay is negative
     while let Ok(d) = delay.to_std() {
-        info!("sleeping for ~{} seconds", d.as_secs());
+        debug!("sleeping for ~{} seconds", d.as_secs());
         std::thread::sleep(d);
         delay = stop.signed_duration_since(Utc::now());
     }

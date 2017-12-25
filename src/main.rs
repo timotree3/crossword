@@ -7,9 +7,10 @@ extern crate error_chain;
 extern crate log;
 extern crate serenity;
 
-mod timings;
+mod puzzles;
+mod discord;
 
-use timings::Puzzle;
+use puzzles::Puzzle;
 
 use chrono::offset::Utc;
 use serenity::model::*;
@@ -34,6 +35,7 @@ impl EventHandler for Handler {
         std::thread::spawn(move || broadcast_loop());
     }
     fn on_reaction_add(&self, _: Context, react: Reaction) {
+        debug!("new reaction: {:?}", react.emoji);
         if let Err(e) = process_reaction(&react) {
             warn!(
                 "failed to process reaction ({:?}): {}",
@@ -43,6 +45,7 @@ impl EventHandler for Handler {
         }
         fn process_reaction(react: &Reaction) -> Result<()> {
             if react.emoji != CHECKMARK.into() {
+                debug!("skipping reaction because it isn't a checkmark");
                 return Ok(());
             }
 
@@ -55,6 +58,7 @@ impl EventHandler for Handler {
                     if let Some(c) = guild_channel(channel) {
                         c
                     } else {
+                        debug!("skipping reaction because it isn't in #crosswords");
                         return Ok(());
                     }
                 };
@@ -77,7 +81,9 @@ impl EventHandler for Handler {
         }
     }
 
-    // fn on_reaction_remove(&self, _: Context, react: Reaction) {}
+    fn on_reaction_remove(&self, _: Context, react: Reaction) {
+        debug!("reaction removed: {:?}", react.emoji);
+    }
 }
 
 fn guild_channel(c: Channel) -> Option<::std::sync::Arc<::std::sync::RwLock<GuildChannel>>> {
@@ -194,16 +200,7 @@ fn broadcast_guild(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
         .chain_err(|| "failed to configure today's channel")?;
 
     crosswords
-        .send_message(|m| {
-            m.content(&format!(
-                "\u{200B}\
-                 The mini of {} just came out! \
-                 Play it online at https://nytimes.com/crosswords/game/mini or in the app.\n\
-                 Once you're done, click the :white_check_mark: below \
-                 so you can share your thoughts.",
-                puzzle
-            )).reactions(Some(CHECKMARK))
-        })
+        .send_message(|m| m.content(&puzzle.announcement()).reactions(Some(CHECKMARK)))
         .chain_err(|| "failed to send update message")?;
 
     Ok(())
