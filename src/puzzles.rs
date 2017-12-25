@@ -1,9 +1,3 @@
-//! # NY Crossword Times
-//!
-//! Provides timing related to NYTimes Crosswords.
-//! For more info, see the [FAQ].
-//! [FAQ]: https://www.nytimes.com/content/help/games/crosswords/crosswords.html#available
-
 use std;
 use chrono::{Date, DateTime, Datelike, TimeZone, Utc};
 use chrono_tz::America::New_York;
@@ -42,6 +36,8 @@ impl Puzzle {
     }
 
     /// Returns the current puzzle as of `time`.
+    /// For more info, see the [FAQ].
+    /// [FAQ]: https://www.nytimes.com/content/help/games/crosswords/crosswords.html#available
     pub fn current_as_of<T>(time: DateTime<T>) -> Puzzle
     where
         T: TimeZone,
