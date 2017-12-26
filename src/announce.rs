@@ -1,5 +1,4 @@
 // TODO: Create functions:
-// - fn is_announcement_channel(channel: GuildChannel) -> bool
 // - fn is_announcement_message(message: Message) -> bool
 
 use super::errors::*;
@@ -7,6 +6,10 @@ use error_chain::ChainedError;
 use serenity::model::*;
 use puzzles::Puzzle;
 use CHECKMARK;
+
+pub fn is_announcement_channel(channel: &GuildChannel) -> bool {
+    channel.name == "crosswords"
+}
 
 pub fn announce_in_all(new: Puzzle) {
     info!("broadcasting for puzzle: {}", new);
@@ -28,8 +31,8 @@ pub fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
         .channels()
         .chain_err(|| "failed to get channels")?
         .into_iter()
-        .find(|&(_channel_id, ref channel)| channel.name == "crosswords")
-        .chain_err(|| "failed to find #crosswords")?;
+        .find(|&(_channel_id, ref channel)| is_announcement_channel(channel))
+        .chain_err(|| "failed to find announcement_channel")?;
 
     let _todays_channel =
         ::discord::create_unique_hidden_channel(&puzzle.to_channel_name(), guild_id)

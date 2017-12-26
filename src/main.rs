@@ -66,7 +66,7 @@ impl EventHandler for Handler {
                 return Ok(());
             }
 
-            if channel_lock.read().unwrap().name != "crosswords" {
+            if !announce::is_announcement_channel(&channel_lock.read().unwrap()) {
                 return Ok(());
             }
 
