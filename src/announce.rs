@@ -1,6 +1,3 @@
-// TODO: Create functions:
-// - fn is_announcement_message(message: Message) -> bool
-
 use super::errors::*;
 use error_chain::ChainedError;
 use serenity::model::*;
@@ -9,6 +6,10 @@ use CHECKMARK;
 
 pub fn is_announcement_channel(channel: &GuildChannel) -> bool {
     channel.name == "crosswords"
+}
+
+pub fn is_announcement_message(message: &Message) -> bool {
+    message.author.id == ::serenity::CACHE.read().unwrap().user.id
 }
 
 pub fn announce_in_all(new: Puzzle) {

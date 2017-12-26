@@ -62,7 +62,7 @@ impl EventHandler for Handler {
             let message = discord::reaction_message(&reaction)
                 .chain_err(|| "failed to get reaction message")?;
 
-            if message.author.id != ::serenity::CACHE.read().unwrap().user.id {
+            if !announce::is_announcement_message(&message) {
                 return Ok(());
             }
 
