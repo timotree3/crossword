@@ -79,7 +79,7 @@ impl Puzzle {
     pub fn to_announcement(self) -> String {
         format!(
             "\u{200B}\
-             TEST The mini of {} just came out! \
+             The mini of {} just came out! \
              Play it online at https://nytimes.com/crosswords/game/mini or in the app.\n\
              Once you're done, click the :white_check_mark: below \
              so you can share your thoughts.",
