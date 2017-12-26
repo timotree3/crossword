@@ -32,6 +32,8 @@ impl EventHandler for Handler {
     fn on_ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
+        announce_in_all(Puzzle::current_as_of_now());
+
         std::thread::spawn(move || Puzzle::every(|new| announce_in_all(new)));
     }
     fn on_reaction_add(&self, _: Context, reaction: Reaction) {
@@ -52,26 +54,28 @@ impl EventHandler for Handler {
             let channel_lock = match discord::guild_channel(discord::reaction_channel(&reaction)
                 .chain_err(|| "failed to get reaction channel")?)
             {
-                Some(channel) => channel,
+                Some(channel_lock) => channel_lock,
                 None => return Ok(()),
             };
 
-            let channel = channel_lock.read().unwrap();
-            if channel.name != "crosswords" {
-                debug!("skipping reaction because it isn't in #crosswords");
+            let message = discord::reaction_message(&reaction)
+                .chain_err(|| "failed to get reaction message")?;
+
+            if message.author.id != ::serenity::CACHE.read().unwrap().user.id {
                 return Ok(());
             }
 
-            let guild_id = channel.guild_id;
+            if channel_lock.read().unwrap().name != "crosswords" {
+                return Ok(());
+            }
+
+            let guild_id = channel_lock.read().unwrap().guild_id;
 
             let (_puzzle_channel_id, puzzle_channel) =
-                discord::find_channel(
-                    &Puzzle::from_announcement(discord::reaction_message(&reaction)
-                        .chain_err(|| "failed to get reaction message")?)
-                        .to_channel_name(),
-                    guild_id,
-                ).chain_err(|| "failed to find puzzle channel")?
-                    .chain_err(|| "failed to find puzzle channel")?;
+                find_puzzle_channel(
+                    Puzzle::from_announcement(message),
+                    guild_id.channels().chain_err(|| "failed to get channels")?,
+                ).chain_err(|| "failed to find puzzle channel")?;
 
             discord::unhide_channel(&puzzle_channel, discord::from_user_id(reaction.user_id))
                 .chain_err(|| "failed to hide channel")?;
@@ -84,7 +88,7 @@ impl EventHandler for Handler {
     }
 }
 
-command!(announce_fake(_context, message) {
+command!(try_announce(_context, message) {
     process_message(&message).unwrap_or_else(|e| {
         warn!(
             "failed to process message ({:?}): {}",
@@ -97,24 +101,34 @@ command!(announce_fake(_context, message) {
         if message.is_own() {
             return Ok(());
         }
-        let guild_channel_lock = match discord::guild_channel(message.channel_id.get().chain_err(|| "failed to get channel")?) {
+        let channel_lock = match discord::guild_channel(message.channel_id.get().chain_err(|| "failed to get channel")?) {
             Some(c) => c,
             None => return Ok(()),
         };
 
-        let guild_channel = guild_channel_lock.read().unwrap();
+        let channel = channel_lock.read().unwrap();
 
-        if guild_channel.name != "commands" {
+        if channel.name != "commands" {
             return Ok(());
         }
 
-        message.reply("Announcing...").chain_err(|| "failed to send reply message")?;
+        announce_in(Puzzle::current_as_of_now(), channel.guild_id).chain_err(|| "failed to announce")?;
 
         Ok(())
     }
 });
 
 quick_main!(run);
+
+fn find_puzzle_channel<I>(puzzle: Puzzle, channels: I) -> Option<(ChannelId, GuildChannel)>
+where
+    I: IntoIterator<Item = (ChannelId, GuildChannel)>,
+{
+    let name = puzzle.to_channel_name();
+    channels
+        .into_iter()
+        .find(|&(_channel_id, ref channel)| &channel.name == &name)
+}
 
 fn run() -> Result<()> {
     env_logger::init().chain_err(|| "failed to init logger")?;
@@ -127,7 +141,7 @@ fn run() -> Result<()> {
     client.with_framework(
         serenity::framework::standard::StandardFramework::new()
             .configure(|c| c.on_mention(true))
-            .on("announce", announce_fake),
+            .on("announce", try_announce),
     );
 
     info!("starting!");
@@ -153,8 +167,11 @@ fn announce_in_all(new: Puzzle) {
 
 fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
     // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
-    let (crosswords_id, _crosswords_lock) = discord::find_channel("crosswords", guild_id)
-        .chain_err(|| "failed to find #crosswords")?
+    let (crosswords_id, _crosswords) = guild_id
+        .channels()
+        .chain_err(|| "failed to get channels")?
+        .into_iter()
+        .find(|&(_channel_id, ref channel)| channel.name == "crosswords")
         .chain_err(|| "failed to find #crosswords")?;
 
     let _todays_channel =

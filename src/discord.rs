@@ -1,5 +1,6 @@
 use super::errors::*;
 use serenity::model::*;
+use std::sync::{Arc, RwLock};
 
 pub fn everyone_role(guild_id: GuildId) -> Result<RoleId> {
     let guild = guild_id.get().chain_err(|| "failed to get guild")?;
@@ -36,20 +37,13 @@ pub fn from_user_id(user_id: UserId) -> PermissionOverwriteType {
     PermissionOverwriteType::Member(user_id)
 }
 
-pub fn find_channel(name: &str, guild_id: GuildId) -> Result<Option<(ChannelId, GuildChannel)>> {
-    let channels = guild_id
-        .channels()
-        .chain_err(|| "failed to retrieve channels")?;
-    Ok(channels
-        .into_iter()
-        .filter(|&(_channel_id, ref channel)| channel.name == name)
-        .next())
-}
-
 pub fn create_unique_hidden_channel(name: &str, guild_id: GuildId) -> Result<GuildChannel> {
     ensure!(
-        find_channel(name, guild_id)
+        guild_id
+            .channels()
             .chain_err(|| "failed to get channels")?
+            .into_iter()
+            .find(|&(_channel_id, ref channel)| channel.name == name)
             .is_none(),
         "channel with same name already exists"
     );
@@ -70,7 +64,7 @@ pub fn create_hidden_channel(name: &str, guild_id: GuildId) -> Result<GuildChann
     Ok(new_channel)
 }
 
-pub fn guild_channel(c: Channel) -> Option<::std::sync::Arc<::std::sync::RwLock<GuildChannel>>> {
+pub fn guild_channel(c: Channel) -> Option<Arc<RwLock<GuildChannel>>> {
     match c {
         Channel::Guild(channel_lock) => Some(channel_lock),
         _ => None,

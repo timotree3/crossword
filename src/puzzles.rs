@@ -51,6 +51,10 @@ impl Puzzle {
         }
     }
 
+    pub fn current_as_of_now() -> Puzzle {
+        Puzzle::current_as_of(Utc::now())
+    }
+
     /// Returns the time when this puzzle's replacement will come out.
     pub fn replacement_time(self) -> DateTime<Tz> {
         use chrono::Weekday;
@@ -98,7 +102,7 @@ impl Puzzle {
         F: FnMut(Puzzle),
     {
         loop {
-            let current = Puzzle::current_as_of(Utc::now());
+            let current = Puzzle::current_as_of_now();
             current.wait_until_replaced();
             callback(current.succ())
         }
