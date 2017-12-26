@@ -8,6 +8,7 @@ extern crate log;
 #[macro_use]
 extern crate serenity;
 
+mod announce;
 mod puzzles;
 mod discord;
 
@@ -32,9 +33,9 @@ impl EventHandler for Handler {
     fn on_ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        announce_in_all(Puzzle::current_as_of_now());
+        announce::announce_in_all(Puzzle::current_as_of_now());
 
-        std::thread::spawn(move || Puzzle::every(|new| announce_in_all(new)));
+        std::thread::spawn(move || Puzzle::every(|new| announce::announce_in_all(new)));
     }
     fn on_reaction_add(&self, _: Context, reaction: Reaction) {
         debug!("new reaction: {:?}", reaction.emoji);
@@ -112,7 +113,7 @@ command!(try_announce(_context, message) {
             return Ok(());
         }
 
-        announce_in(Puzzle::current_as_of_now(), channel.guild_id).chain_err(|| "failed to announce")?;
+        announce::announce_in(Puzzle::current_as_of_now(), channel.guild_id).chain_err(|| "failed to announce")?;
 
         Ok(())
     }
@@ -147,43 +148,6 @@ fn run() -> Result<()> {
     info!("starting!");
 
     client.start().chain_err(|| "failed to start client")?;
-
-    Ok(())
-}
-
-fn announce_in_all(new: Puzzle) {
-    info!("broadcasting for puzzle: {}", new);
-    let guilds = &serenity::CACHE.read().unwrap().guilds;
-    guilds.iter().for_each(|(guild_id, _guild)| {
-        announce_in(new, *guild_id).unwrap_or_else(|e| {
-            warn!(
-                "failed to broadcast for guild (guild_id={}): {}",
-                guild_id,
-                e.display_chain()
-            )
-        })
-    });
-}
-
-fn announce_in(puzzle: Puzzle, guild_id: GuildId) -> Result<()> {
-    // get crosswords channel first both to avoid iterating over the new channel and to fail faster.
-    let (crosswords_id, _crosswords) = guild_id
-        .channels()
-        .chain_err(|| "failed to get channels")?
-        .into_iter()
-        .find(|&(_channel_id, ref channel)| channel.name == "crosswords")
-        .chain_err(|| "failed to find #crosswords")?;
-
-    let _todays_channel =
-        discord::create_unique_hidden_channel(&puzzle.to_channel_name(), guild_id)
-            .chain_err(|| "failed to create todays hidden channel")?;
-
-    crosswords_id
-        .send_message(|m| {
-            m.content(&puzzle.to_announcement())
-                .reactions(Some(CHECKMARK))
-        })
-        .chain_err(|| "failed to send announcement message")?;
 
     Ok(())
 }
