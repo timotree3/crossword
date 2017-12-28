@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate error_chain;
 #[macro_use]
 extern crate log;
-#[macro_use]
 extern crate serenity;
 
 mod announce;
@@ -132,36 +131,6 @@ impl EventHandler for Handler {
     }
 }
 
-command!(try_announce(_context, message) {
-    process_message(&message).unwrap_or_else(|e| {
-        warn!(
-            "failed to process message ({:?}): {}",
-            message,
-            e.display_chain()
-        )
-    });
-
-    fn process_message(message: &Message) -> Result<()> {
-        if message.is_own() {
-            return Ok(());
-        }
-        let channel_lock = match discord::guild_channel(message.channel_id.get().chain_err(|| "failed to get channel")?) {
-            Some(c) => c,
-            None => return Ok(()),
-        };
-
-        let channel = channel_lock.read().unwrap();
-
-        if channel.name != "commands" {
-            return Ok(());
-        }
-
-        announce::announce_in(Puzzle::current_as_of_now(), channel.guild_id).chain_err(|| "failed to announce")?;
-
-        Ok(())
-    }
-});
-
 quick_main!(run);
 
 fn find_puzzle_channel<I>(puzzle: Puzzle, channels: I) -> Option<(ChannelId, GuildChannel)>
@@ -183,9 +152,7 @@ fn run() -> Result<()> {
     };
 
     client.with_framework(
-        serenity::framework::standard::StandardFramework::new()
-            .configure(|c| c.on_mention(true))
-            .on("announce", try_announce),
+        serenity::framework::standard::StandardFramework::new().configure(|c| c.on_mention(true)),
     );
 
     info!("starting!");
