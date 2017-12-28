@@ -86,6 +86,49 @@ impl EventHandler for Handler {
 
     fn on_reaction_remove(&self, _: Context, reaction: Reaction) {
         debug!("reaction removed: {:?}", reaction.emoji);
+        process_reaction(&reaction).unwrap_or_else(|e| {
+            warn!(
+                "failed to process reaction removal ({:?}): {}",
+                reaction,
+                e.display_chain()
+            )
+        });
+        fn process_reaction(reaction: &Reaction) -> Result<()> {
+            if reaction.emoji != CHECKMARK.into() {
+                debug!("skipping reaction because it isn't a checkmark");
+                return Ok(());
+            }
+
+            let channel_lock = match discord::guild_channel(discord::reaction_channel(&reaction)
+                .chain_err(|| "failed to get reaction channel")?)
+            {
+                Some(channel_lock) => channel_lock,
+                None => return Ok(()),
+            };
+
+            let message = discord::reaction_message(&reaction)
+                .chain_err(|| "failed to get reaction message")?;
+
+            if !announce::is_announcement_message(&message) {
+                return Ok(());
+            }
+
+            if !announce::is_announcement_channel(&channel_lock.read().unwrap()) {
+                return Ok(());
+            }
+
+            let guild_id = channel_lock.read().unwrap().guild_id;
+
+            let (_puzzle_channel_id, puzzle_channel) =
+                find_puzzle_channel(
+                    Puzzle::from_announcement(message),
+                    guild_id.channels().chain_err(|| "failed to get channels")?,
+                ).chain_err(|| "failed to find puzzle channel")?;
+
+            discord::rehide_channel(&puzzle_channel, discord::from_user_id(reaction.user_id))
+                .chain_err(|| "failed to hide channel")?;
+            Ok(())
+        }
     }
 }
 

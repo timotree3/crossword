@@ -85,6 +85,16 @@ pub fn unhide_channel(
     Ok(())
 }
 
+pub fn rehide_channel(
+    channel: &GuildChannel,
+    to_rehide_from: PermissionOverwriteType,
+) -> Result<()> {
+    channel
+        .delete_permission(to_rehide_from)
+        .chain_err(|| "failed to change channel permissions")?;
+    Ok(())
+}
+
 pub fn reaction_message(reaction: &Reaction) -> Result<Message> {
     Ok(reaction
         .channel_id
